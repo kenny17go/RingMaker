@@ -1,4 +1,4 @@
-# RingMaker V1.0.1
+# RingMaker V1.0.2
 
 A mobile-first, local-only PWA to trim personal audio into a <=29-second custom iPhone ringtone.
 
@@ -14,7 +14,7 @@ For local development: `python3 -m http.server 8000` from this folder; open `htt
 ## Features
 
 - Load locally selected MP3/M4A/WAV/other audio files supported by Safari's audio decoder; no upload.
-- Display waveform; trim start and length (maximum 29.0s), fade in/out, adjust loudness and preview.
+- Display waveform; trim start and length (maximum 29.0s), fade in/out, adjust loudness and preview using an iOS-native HTMLAudioElement WAV clip (avoids suspended AudioContext preview playback).
 - Safari MediaRecorder AAC/MP4 -> M4A, then Web Share file or download. Capability is detected at runtime. **Runs in real time; keep Safari foreground during encoding.** Browser device support varies; test on physical iPhone.
 - Export PCM WAV backup universally (but iOS 26 direct Use as Ringtone expects MP3/M4A).
 - YouTube URL embedded preview only; never downloads or rips media.
@@ -38,4 +38,4 @@ No analytics, third-party audio upload, servers or account. Entering a YouTube U
 
 ## Versions
 
-V1.0.1 in homepage, README, manifest, service worker, ZIP filename.
+V1.0.2 in homepage, README, manifest, service worker, ZIP filename.
