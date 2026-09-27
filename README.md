@@ -1,4 +1,4 @@
-# RingMaker V1.0.7
+# RingMaker V1.0.8
 
 A mobile-first, local-only PWA to trim personal audio into a <=29-second custom iPhone ringtone.
 
@@ -38,7 +38,7 @@ No analytics, third-party audio upload, servers or account. Entering a YouTube U
 
 ## Versions
 
-V1.0.7 in homepage, README, service worker cache and asset URLs.
+V1.0.8 in homepage, README, service worker cache and asset URLs.
 
 
 ## V1.0.6
@@ -60,3 +60,8 @@ V1.0.7 in homepage, README, service worker cache and asset URLs.
 ## V1.0.7
 - Add optional, clearly labeled third-party link at the bottom of the page: https://yt5s.biz/zh-twwr200/.
 - Link opens in a new tab with noopener/noreferrer. No embedded content, tracking integration, or automatic extraction.
+
+## V1.0.8
+- Tapping the external-tool link copies a valid YouTube URL from the preview input, then opens the third-party site in a separate tab for manual paste.
+- The external service has no verified supported URL-prefill mechanism; cross-origin automatic form filling is not attempted.
+- Empty input still opens the original link; invalid YouTube links show an inline error.
