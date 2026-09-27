@@ -26,18 +26,22 @@ function updateOverlay(){
 }
 // Native HTMLAudioElement is more reliable for audible playback on iOS Safari than
 // starting Web Audio from a suspended AudioContext created during file import.
-let previewAudio=null,previewURL=null,previewPosition=0,previewAnimation=0;
+let previewAudio=null,previewURL=null,previewPosition=0,previewAnimation=0,previewInterval=0;
 function updatePreviewProgress(){
  if(!state.buffer)return;
  const s=trimSettings();
- const pos=clamp(previewAudio&&!previewAudio.paused?previewAudio.currentTime:previewPosition,0,s.length);
+ const live=previewAudio&&!previewAudio.paused&&Number.isFinite(previewAudio.currentTime)?previewAudio.currentTime:previewPosition;
+ const pos=clamp(live,0,s.length);
  const slider=$('previewSeek');
  slider.max=s.length.toFixed(1);
  slider.value=pos.toFixed(1);
+ slider.style.setProperty('--played', (s.length>0?pos/s.length*100:0).toFixed(1)+'%');
  $('previewCurrent').textContent=sec(pos);
  $('previewTotal').textContent=sec(s.length);
  $('previewPlayhead').style.left=((s.start+pos)/state.buffer.duration*100)+'%';
  $('previewPlayhead').hidden=false;
+ $('previewPlayhead').style.display='block';
+ $('wavePlaybackTime').textContent='播放：'+sec(s.start+pos);
 }
 function previewTick(){
  if(!previewAudio||previewAudio.paused){previewAnimation=0;return}
@@ -47,6 +51,7 @@ function previewTick(){
 }
 function stopPreview(){
  if(previewAnimation){cancelAnimationFrame(previewAnimation);previewAnimation=0}
+ if(previewInterval){clearInterval(previewInterval);previewInterval=0}
  if(previewAudio){
   previewAudio.onended=null;previewAudio.onerror=null;previewAudio.ontimeupdate=null;previewAudio.onloadedmetadata=null;
   previewAudio.pause();previewAudio.removeAttribute('src');previewAudio.load();previewAudio=null;
@@ -88,9 +93,9 @@ function preview(){
   audio.preload='auto';audio.playsInline=true;audio.src=previewURL;previewAudio=audio;
   audio.onloadedmetadata=()=>{if(previewAudio===audio&&previewPosition>0)seekPreview(previewPosition)};
   audio.ontimeupdate=()=>{if(previewAudio===audio){previewPosition=audio.currentTime;updatePreviewProgress()}};
-  audio.onplay=()=>{if(previewAudio===audio){$('preview').textContent='Ⅱ 暫停試聽';if(!previewAnimation)previewAnimation=requestAnimationFrame(previewTick)}};
-  audio.onpause=()=>{if(previewAudio===audio){previewPosition=audio.currentTime;$('preview').textContent='▶ 繼續試聽';updatePreviewProgress()}};
-  audio.onended=()=>{if(previewAudio===audio){previewPosition=trimSettings().length;previewAudio.pause();$('preview').textContent='↻ 重新試聽';updatePreviewProgress()}};
+  audio.onplay=()=>{if(previewAudio===audio){$('preview').textContent='Ⅱ 暫停試聽';if(!previewAnimation)previewAnimation=requestAnimationFrame(previewTick);if(!previewInterval)previewInterval=setInterval(()=>{if(previewAudio&&!previewAudio.paused){previewPosition=previewAudio.currentTime;updatePreviewProgress()}},100)}};
+  audio.onpause=()=>{if(previewAudio===audio){previewPosition=audio.currentTime;if(previewAnimation){cancelAnimationFrame(previewAnimation);previewAnimation=0}if(previewInterval){clearInterval(previewInterval);previewInterval=0}$('preview').textContent='▶ 繼續試聽';updatePreviewProgress()}};
+  audio.onended=()=>{if(previewAudio===audio){previewPosition=trimSettings().length;if(previewAnimation){cancelAnimationFrame(previewAnimation);previewAnimation=0}if(previewInterval){clearInterval(previewInterval);previewInterval=0}$('preview').textContent='↻ 重新試聽';updatePreviewProgress()}};
   audio.onerror=()=>{if(previewAudio===audio){stopPreview();notice('試聽失敗，請檢查媒體音量或音訊輸出')}};
   $('stop').disabled=false;
   const playback=audio.play(); // user gesture stays synchronous for iOS
@@ -133,30 +138,6 @@ $('waveWrap').addEventListener('pointerup',finishWaveDrag);
 $('waveWrap').addEventListener('pointercancel',finishWaveDrag);
 async function getContext(){if(!state.ctx)state.ctx=new (window.AudioContext||window.webkitAudioContext)();if(state.ctx.state==='suspended')await withTimeout(state.ctx.resume(),8000,'iOS 未允許音樂播放，請再按一次試聽或製作');return state.ctx}
 function gainEnvelope(ctx,settings,at){const node=ctx.createGain(),v=settings.volume,fade=Math.min(.3,settings.length/3);node.gain.setValueAtTime(settings.fade?0:v,at);if(settings.fade){node.gain.linearRampToValueAtTime(v,at+fade);node.gain.setValueAtTime(v,at+settings.length-fade);node.gain.linearRampToValueAtTime(0,at+settings.length)}return node}
-function preview(){
- if(!state.buffer){notice('請先選擇音樂');return}
- if(previewAudio){
-  if(previewAudio.paused){const p=previewAudio.play();$('preview').textContent='Ⅱ 暫停試聽';if(p&&p.catch)p.catch(e=>{ $('preview').textContent='▶ 繼續試聽';notice('無法播放：'+(e.message||e.name)+'；請確認媒體音量及輸出裝置。')});}
-  else {previewAudio.pause();$('preview').textContent='▶ 繼續試聽'}
-  return;
- }
- try{
-  $('preview').textContent='正在準備試聽…';$('preview').disabled=true;
-  // Create a short WAV of just the selected part so the native iPhone media
-  // player handles playback, avoiding AudioContext resume/autoplay edge cases.
-  const wav=writeWav(clipPCM());
-  previewURL=URL.createObjectURL(wav);
-  const audio=new Audio();
-  audio.preload='auto';audio.playsInline=true;audio.src=previewURL;previewAudio=audio;
-  audio.onended=()=>{if(previewAudio===audio)stopPreview()};
-  audio.onerror=()=>{if(previewAudio===audio){stopPreview();notice('試聽失敗，請確認音量、藍牙耳機或其他音訊輸出。')}};
-  $('stop').disabled=false;
-  // Call play() inside the actual tap handler; do not await other operations.
-  const playback=audio.play();
-  $('preview').disabled=false;$('preview').textContent='Ⅱ 暫停試聽';
-  if(playback&&playback.catch)playback.catch(e=>{if(previewAudio===audio){stopPreview();notice('iPhone 無法開始試聽：'+(e.message||e.name)+'。請再點一次試聽。')}});
- }catch(e){stopPreview();notice('試聽準備失敗：'+(e.message||e.name))}
-}
 // iOS Safari may leave AudioContext.resume() pending until another gesture.
 // File selection and decoding must never wait for audio playback to be unlocked.
 const withTimeout=(promise,ms,message)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(message)),ms);Promise.resolve(promise).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
