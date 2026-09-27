@@ -302,4 +302,31 @@ $('length').addEventListener('input',()=>{
 $('previewSeek').addEventListener('input',e=>seekPreview(Number(e.target.value)));
 $('skipBack').addEventListener('click',()=>skipPreview(-5));
 $('skipForward').addEventListener('click',()=>skipPreview(5));
-$('volume').addEventListener('input',()=>{stopPreview();$('volumeValue').textContent=$('volume').value+'%'});$('preview').addEventListener('click',preview);$('fade').addEventListener('change',stopPreview);$('stop').addEventListener('click',stopPreview);$('render').addEventListener('click',exportM4A);$('wav').addEventListener('click',exportWav);$('youtubeGo').addEventListener('click',()=>{const id=youtubeId($('youtubeUrl').value);$('youtubeError').hidden=!!id;if(!id){$('youtubeError').textContent='請貼上有效的 YouTube 影片網址。';$('youtubePlayer').hidden=true;return}const iframe=document.createElement('iframe');iframe.src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id);iframe.title='YouTube 影片預覽';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.referrerPolicy='strict-origin-when-cross-origin';iframe.allowFullscreen=true;$('youtubePlayer').replaceChildren(iframe);$('youtubePlayer').hidden=false});let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>state.buffer&&drawWave(),150)});window.addEventListener('pagehide',stopPreview);if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+$('volume').addEventListener('input',()=>{stopPreview();$('volumeValue').textContent=$('volume').value+'%'});$('preview').addEventListener('click',preview);$('fade').addEventListener('change',stopPreview);$('stop').addEventListener('click',stopPreview);$('render').addEventListener('click',exportM4A);$('wav').addEventListener('click',exportWav);$('youtubeGo').addEventListener('click',()=>{const id=youtubeId($('youtubeUrl').value);$('youtubeError').hidden=!!id;if(!id){$('youtubeError').textContent='請貼上有效的 YouTube 影片網址。';$('youtubePlayer').hidden=true;return}const iframe=document.createElement('iframe');iframe.src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id);iframe.title='YouTube 影片預覽';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.referrerPolicy='strict-origin-when-cross-origin';iframe.allowFullscreen=true;$('youtubePlayer').replaceChildren(iframe);$('youtubePlayer').hidden=false});// Third-party site has no verified URL-prefill API. Copy on user tap, then open it.
+async function copyYoutubeLink(value){
+ try{
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);return true}
+ }catch(e){console.warn('Clipboard API unavailable:',e)}
+ const input=$('youtubeUrl');
+ input.focus();input.select();input.setSelectionRange(0,input.value.length);
+ try{return document.execCommand('copy')}catch(e){return false}
+}
+$('externalTool').addEventListener('click',e=>{
+ const input=$('youtubeUrl');
+ const raw=input.value.trim();
+ if(!raw)return;
+ const id=youtubeId(raw);
+ if(!id){
+  e.preventDefault();
+  $('youtubeError').hidden=false;
+  $('youtubeError').textContent='請先輸入有效的 YouTube 影片網址。';
+  input.focus();return;
+ }
+ // Clipboard write is initiated in this tap handler. Keep the native anchor navigation
+ // unblocked so iOS Safari still opens the external page in a separate tab.
+ const canonical='https://www.youtube.com/watch?v='+id;
+ copyYoutubeLink(canonical).then(ok=>{
+  notice(ok?'已複製 YouTube 網址，請在新分頁的輸入框貼上。':'請長按上方 YouTube 網址並選擇「複製」，再貼到新分頁。');
+ }).catch(()=>notice('請複製上方網址，貼至新分頁。'));
+});
+let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>state.buffer&&drawWave(),150)});window.addEventListener('pagehide',stopPreview);if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
