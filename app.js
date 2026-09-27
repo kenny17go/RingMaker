@@ -184,7 +184,106 @@ function writeWav(pcm){const {channels,sampleRate,total}=pcm,nch=channels.length
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 function cleanName(){return ($('filename').value||'我的專屬鈴聲').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'').trim().slice(0,60)||'ringtone'}
 async function exportWav(){if(!state.buffer)return;try{const wav=writeWav(clipPCM());downloadBlob(wav,cleanName()+'.wav');notice('WAV 備份已匯出；如需直接設鈴聲，請使用 M4A。')}catch(e){notice('WAV 製作失敗：'+e.message)}}
-async function exportM4A(){if(!state.buffer||state.busy)return;if(typeof MediaRecorder==='undefined'||typeof MediaRecorder.isTypeSupported!=='function'||!['audio/mp4;codecs=mp4a.40.2','audio/mp4'].some(m=>MediaRecorder.isTypeSupported(m))){notice('此瀏覽器不支援 M4A 編碼。請在 iPhone Safari 開啟，或先使用 WAV 備份。');return}state.busy=true;$('render').disabled=true;$('render').textContent='正在製作…請保持畫面開啟';stopPreview();let rec,ctx,source,stream,g;try{ctx=await getContext();const mime=['audio/mp4;codecs=mp4a.40.2','audio/mp4'].find(m=>MediaRecorder.isTypeSupported(m)),s=trimSettings(),pcm=clipPCM(),buffer=ctx.createBuffer(pcm.channels.length,pcm.total,pcm.sampleRate);for(let ch=0;ch<pcm.channels.length;ch++)buffer.copyToChannel(pcm.channels[ch],ch);stream=ctx.createMediaStreamDestination();source=ctx.createBufferSource();source.buffer=buffer;g=ctx.createGain();g.gain.value=1;source.connect(g);g.connect(stream);/* Connect silent monitor to destination so iOS continues rendering. */const monitor=ctx.createGain();monitor.gain.value=0;g.connect(monitor).connect(ctx.destination);let chunks=[];rec=new MediaRecorder(stream.stream,{mimeType:mime,audioBitsPerSecond:160000});const output=new Promise((resolve,reject)=>{rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};rec.onerror=e=>reject(e.error||Error('錄製失敗'));rec.onstop=()=>{const blob=new Blob(chunks,{type:'audio/mp4'});blob.size>1000?resolve(blob):reject(Error('沒有產生可用的 M4A 音訊'))}});rec.start();source.start(ctx.currentTime+.1);await new Promise((resolve,reject)=>{source.onended=resolve;setTimeout(()=>reject(Error('錄製逾時')),Math.ceil((s.length+5)*1000))});await new Promise(r=>setTimeout(r,220));if(rec.state!=='inactive')rec.stop();const blob=await output;const file=new File([blob],cleanName()+'.m4a',{type:'audio/mp4'});if(state.objectURL)URL.revokeObjectURL(state.objectURL);state.objectURL=URL.createObjectURL(blob);$('resultAudio').src=state.objectURL;$('download').href=state.objectURL;$('download').download=file.name;$('share').onclick=async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:file.name})}else{downloadBlob(blob,file.name);notice('已開始下載，請到「檔案」App 找到 M4A。')}}catch(e){if(e.name!=='AbortError')notice('無法開啟分享：'+e.message)}};$('result').hidden=false;$('result').scrollIntoView({behavior:'smooth',block:'center'});notice('M4A 已完成！請按「儲存到 iPhone」，選擇「儲存到檔案」。')}catch(e){notice('M4A 製作失敗：'+e.message)}finally{try{if(rec?.state==='recording')rec.stop()}catch{}try{source?.disconnect();g?.disconnect()}catch{}state.busy=false;$('render').disabled=false;$('render').textContent='♫ 製作 M4A 鈴聲'}}
+// UI is tied to actual recording time; encoding/packaging may take longer.
+let renderTimer=null,renderStart=0,renderDuration=0;
+function renderProgressTick(){
+ if(!renderStart)return;
+ const elapsed=Math.max(0,(performance.now()-renderStart)/1000);
+ const remaining=Math.max(0,Math.ceil(renderDuration-elapsed));
+ $('renderSeconds').textContent=String(remaining);
+ $('renderBar').style.width=(Math.min(95,elapsed/renderDuration*95)).toFixed(1)+'%';
+ $('renderStatus').textContent=remaining>0?'正在錄製選取片段…':'錄音完成，正在封裝 M4A…';
+}
+function showRenderProgress(){
+ $('renderProgress').hidden=false;
+ $('renderStatus').textContent='正在準備音訊…';
+ $('renderSeconds').textContent='—';
+ $('renderBar').style.width='0%';
+ $('renderProgress').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function startRenderCountdown(seconds){
+ renderStart=performance.now();renderDuration=seconds;
+ renderProgressTick();
+ renderTimer=setInterval(renderProgressTick,150);
+}
+function finishRenderProgress(){
+ if(renderTimer!==null){clearInterval(renderTimer);renderTimer=null}
+ renderStart=0;
+ $('renderProgress').hidden=true;
+}
+
+async function exportM4A(){
+ if(!state.buffer||state.busy)return;
+ const supported=['audio/mp4;codecs=mp4a.40.2','audio/mp4'];
+ if(typeof MediaRecorder==='undefined'||typeof MediaRecorder.isTypeSupported!=='function'||!supported.some(m=>MediaRecorder.isTypeSupported(m))){
+  notice('此瀏覽器不支援 M4A 編碼。請在 iPhone Safari 開啟，或先使用 WAV 備份。');return;
+ }
+ state.busy=true;$('render').disabled=true;$('render').textContent='正在製作…請保持畫面開啟';
+ stopPreview();showRenderProgress();
+ let rec,ctx,source,stream,g,recordTimeout;
+ try{
+  ctx=await getContext();
+  const mime=supported.find(m=>MediaRecorder.isTypeSupported(m));
+  const s=trimSettings(),pcm=clipPCM();
+  const buffer=ctx.createBuffer(pcm.channels.length,pcm.total,pcm.sampleRate);
+  for(let ch=0;ch<pcm.channels.length;ch++)buffer.copyToChannel(pcm.channels[ch],ch);
+  stream=ctx.createMediaStreamDestination();
+  source=ctx.createBufferSource();source.buffer=buffer;
+  g=ctx.createGain();g.gain.value=1;source.connect(g);g.connect(stream);
+  const monitor=ctx.createGain();monitor.gain.value=0;g.connect(monitor).connect(ctx.destination);
+  let chunks=[];
+  rec=new MediaRecorder(stream.stream,{mimeType:mime,audioBitsPerSecond:160000});
+  const output=new Promise((resolve,reject)=>{
+   rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+   rec.onerror=e=>reject(e.error||Error('錄製失敗'));
+   rec.onstop=()=>{
+    const blob=new Blob(chunks,{type:'audio/mp4'});
+    blob.size>1000?resolve(blob):reject(Error('沒有產生可用的 M4A 音訊'));
+   };
+  });
+  rec.start();
+  source.start(ctx.currentTime+.1);
+  startRenderCountdown(s.length);
+  await new Promise((resolve,reject)=>{
+   source.onended=resolve;
+   recordTimeout=setTimeout(()=>reject(Error('錄製逾時，請重新製作')),Math.ceil((s.length+5)*1000));
+  });
+  clearTimeout(recordTimeout);
+  renderProgressTick();
+  $('renderSeconds').textContent='0';
+  $('renderStatus').textContent='正在封裝 M4A…';
+  await new Promise(r=>setTimeout(r,220));
+  if(rec.state!=='inactive')rec.stop();
+  const blob=await Promise.race([
+   output,
+   new Promise((_,reject)=>setTimeout(()=>reject(Error('M4A 封裝逾時，請重試')),10000))
+  ]);
+  const file=new File([blob],cleanName()+'.m4a',{type:'audio/mp4'});
+  if(state.objectURL)URL.revokeObjectURL(state.objectURL);
+  state.objectURL=URL.createObjectURL(blob);
+  $('resultAudio').src=state.objectURL;
+  $('download').href=state.objectURL;$('download').download=file.name;
+  $('share').onclick=async()=>{
+   try{
+    if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:file.name});
+    else{downloadBlob(blob,file.name);notice('已開始下載，請到「檔案」App 找到 M4A。')}
+   }catch(e){if(e.name!=='AbortError')notice('無法開啟分享：'+e.message)}
+  };
+  finishRenderProgress();
+  $('result').hidden=false;
+  $('result').scrollIntoView({behavior:'smooth',block:'center'});
+  notice('M4A 製作完成！請按「儲存到 iPhone」。');
+ }catch(e){
+  console.error('RingMaker M4A export failed',e);
+  notice('M4A 製作失敗：'+(e.message||e));
+ }finally{
+  if(recordTimeout)clearTimeout(recordTimeout);
+  try{if(rec?.state==='recording')rec.stop()}catch{}
+  try{source?.disconnect();g?.disconnect()}catch{}
+  finishRenderProgress();state.busy=false;
+  $('render').disabled=false;$('render').textContent='♫ 製作 M4A 鈴聲';
+ }
+}
 function youtubeId(input){let u;try{u=new URL(input.trim())}catch{return null}const h=u.hostname.toLowerCase();let id;if(h==='youtu.be'||h==='www.youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com','www.youtube-nocookie.com'].includes(h)){id=u.searchParams.get('v')||u.pathname.match(/^\/(?:shorts|embed|live)\/([^/?]+)/)?.[1]}return /^[\w-]{11}$/.test(id||'')?id:null}
 $('file').addEventListener('change',e=>loadFile(e.target.files?.[0]));
 $('start').addEventListener('input',()=>{
