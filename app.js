@@ -8,10 +8,50 @@ function trimSettings(){let b=state.buffer;const length=Number($('length').value
 function drawWave(){const c=$('wave'),box=c.getBoundingClientRect(),width=Math.max(1,Math.round(box.width*devicePixelRatio)),height=Math.round(box.height*devicePixelRatio);c.width=width;c.height=height;const g=c.getContext('2d');g.clearRect(0,0,width,height);g.fillStyle='#8baded';const data=state.buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/width)),middle=height/2;for(let x=0;x<width;x+=Math.max(2,Math.round(devicePixelRatio*2))){let max=0,start=Math.floor(x*data.length/width);for(let j=start;j<Math.min(data.length,start+step);j+=Math.max(1,Math.floor(step/30)))max=Math.max(max,Math.abs(data[j]));const bar=Math.max(2,max*(height*.9));g.fillRect(x,middle-bar/2,Math.max(1,devicePixelRatio*1.2),bar)}updateOverlay()}
 function updateOverlay(){if(!state.buffer)return;const {start,length}=trimSettings(),duration=state.buffer.duration;$('waveOverlay').style.left=`${start/duration*100}%`;$('waveOverlay').style.width=`${length/duration*100}%`;$('startValue').textContent=sec(start);$('lengthValue').textContent=`${length.toFixed(1)} 秒`;$('durationLabel').textContent=`${length.toFixed(1)} 秒`}
 function stopPreview(){clearTimeout(state.previewTimer);if(state.source){try{state.source.stop()}catch{}try{state.source.disconnect()}catch{}state.source=null}$('preview').textContent='▶ 試聽片段';$('stop').disabled=true}
-async function getContext(){if(!state.ctx)state.ctx=new (window.AudioContext||window.webkitAudioContext)();if(state.ctx.state==='suspended')await state.ctx.resume();return state.ctx}
+async function getContext(){if(!state.ctx)state.ctx=new (window.AudioContext||window.webkitAudioContext)();if(state.ctx.state==='suspended')await withTimeout(state.ctx.resume(),8000,'iOS 未允許音樂播放，請再按一次試聽或製作');return state.ctx}
 function gainEnvelope(ctx,settings,at){const node=ctx.createGain(),v=settings.volume,fade=Math.min(.3,settings.length/3);node.gain.setValueAtTime(settings.fade?0:v,at);if(settings.fade){node.gain.linearRampToValueAtTime(v,at+fade);node.gain.setValueAtTime(v,at+settings.length-fade);node.gain.linearRampToValueAtTime(0,at+settings.length)}return node}
 async function preview(){if(state.source){stopPreview();return}const ctx=await getContext(),s=trimSettings(),source=ctx.createBufferSource(),g=gainEnvelope(ctx,s,ctx.currentTime);source.buffer=state.buffer;source.connect(g).connect(ctx.destination);source.start(ctx.currentTime,s.start,s.length);state.source=source;$('preview').textContent='Ⅱ 暫停試聽';$('stop').disabled=false;source.onended=()=>{if(state.source===source)stopPreview()};state.previewTimer=setTimeout(stopPreview,Math.ceil((s.length+.2)*1000))}
-async function loadFile(file){if(!file)return;if(!/\.(mp3|m4a|wav|aac|aiff|aif|flac|ogg|mp4)$/i.test(file.name)&&!file.type.startsWith('audio/')){notice('請選擇音樂檔案');return}stopPreview();$('fileMeta').hidden=false;$('fileMeta').textContent='正在讀取音樂…';$('editor').hidden=true;$('exportSection').hidden=true;try{const ctx=await getContext(),ab=await file.arrayBuffer(),buffer=await ctx.decodeAudioData(ab);if(buffer.duration<1)throw Error('音訊長度至少須 1 秒');state.buffer=buffer;state.file=file;const maxLength=Math.min(29,Math.floor(buffer.duration*10)/10),length=Math.min(maxLength,29);$('start').max=Math.max(0,buffer.duration-length).toFixed(1);$('start').value='0';$('length').max=maxLength.toFixed(1);$('length').min=Math.min(1,maxLength).toFixed(1);$('length').value=length.toFixed(1);$('sourceEnd').textContent=sec(buffer.duration);$('filename').value=file.name.replace(/\.[^.]+$/,'').slice(0,60)||'我的專屬鈴聲';$('fileMeta').textContent=`已載入：${file.name} · ${sec(buffer.duration)} · ${(file.size/1048576).toFixed(1)} MB`;$('editor').hidden=false;$('exportSection').hidden=false;$('result').hidden=true;drawWave();setTimeout(()=>$('editor').scrollIntoView({behavior:'smooth',block:'start'}),100)}catch(e){$('fileMeta').textContent='載入失敗：此格式可能不受瀏覽器支援';notice('無法讀取音訊：'+e.message)}}
+// iOS Safari may leave AudioContext.resume() pending until another gesture.
+// File selection and decoding must never wait for audio playback to be unlocked.
+const withTimeout=(promise,ms,message)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(message)),ms);Promise.resolve(promise).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+function readAudioFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error||new Error('無法開啟此檔案'));reader.onabort=()=>reject(new Error('檔案讀取已取消'));reader.readAsArrayBuffer(file)})}
+let loadSequence=0;
+async function loadFile(file){
+ if(!file)return;
+ if(!/\.(mp3|m4a|wav|aac|aiff|aif|flac|ogg|mp4)$/i.test(file.name)&&!file.type.startsWith('audio/')){notice('請選擇音樂檔案');return}
+ const request=++loadSequence;
+ stopPreview();state.buffer=null;state.file=null;
+ $('fileMeta').hidden=false;$('fileMeta').textContent='正在開啟檔案…';$('editor').hidden=true;$('exportSection').hidden=true;
+ try{
+  if(!file.size)throw Error('檔案是空的，請重新下載或選擇其他音樂');
+  if(file.size>120*1024*1024)throw Error('音樂超過 120 MB；iPhone 記憶體可能不足，請改用較小的 MP3 或 M4A');
+  // Read before creating AudioContext; iCloud downloads may take time.
+  const ab=await withTimeout(readAudioFile(file),60000,'讀取檔案逾時。若檔案在 iCloud，請先下載到 iPhone「檔案」後重試。');
+  if(request!==loadSequence)return;
+  $('fileMeta').textContent='已取得檔案，正在解析音訊…';
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)throw Error('此瀏覽器不支援音訊編輯，請用 Safari 開啟');
+  // decodeAudioData works on suspended contexts on Safari; resume only when preview/export starts.
+  const ctx=state.ctx||(state.ctx=new AudioContextClass());
+  const buffer=await withTimeout(ctx.decodeAudioData(ab),35000,'音訊解析逾時。請改用無 DRM 的 MP3 或 M4A，或先縮短原音樂。');
+  if(request!==loadSequence)return;
+  if(!Number.isFinite(buffer.duration)||buffer.duration<1)throw Error('音訊長度至少須 1 秒');
+  state.buffer=buffer;state.file=file;
+  const maxLength=Math.min(29,Math.floor(buffer.duration*10)/10),length=Math.min(maxLength,29);
+  $('start').max=Math.max(0,buffer.duration-length).toFixed(1);$('start').value='0';
+  $('length').max=maxLength.toFixed(1);$('length').min=Math.min(1,maxLength).toFixed(1);$('length').value=length.toFixed(1);
+  $('sourceEnd').textContent=sec(buffer.duration);$('filename').value=file.name.replace(/\.[^.]+$/,'').slice(0,60)||'我的專屬鈴聲';
+  $('fileMeta').textContent=`已載入：${file.name} · ${sec(buffer.duration)} · ${(file.size/1048576).toFixed(1)} MB`;
+  $('editor').hidden=false;$('exportSection').hidden=false;$('result').hidden=true;
+  drawWave();setTimeout(()=>$('editor').scrollIntoView({behavior:'smooth',block:'start'}),100);
+ }catch(e){
+  if(request!==loadSequence)return;
+  console.error('RingMaker loadFile failed:',e);
+  const reason=e?.name==='EncodingError'||e?.name==='NotSupportedError'?'此音樂編碼不受 iPhone Safari 支援，或檔案有 DRM；請換成一般 MP3 / M4A / WAV':(e?.message||'未知錯誤');
+  $('fileMeta').textContent='讀取失敗：'+reason;
+  notice('讀取失敗：'+reason);
+ }finally{if(request===loadSequence)$('file').value=''}
+}
 function clipPCM(){const s=trimSettings(),b=state.buffer,sampleRate=b.sampleRate,total=Math.max(1,Math.floor(s.length*sampleRate)),offset=Math.floor(s.start*sampleRate),channels=[];for(let ch=0;ch<Math.min(b.numberOfChannels,2);ch++){const source=b.getChannelData(ch),out=new Float32Array(total);for(let i=0;i<total;i++){let v=source[Math.min(source.length-1,offset+i)]||0;if(s.fade){const fade=Math.min(.3,s.length/3),t=i/sampleRate;v*=Math.min(1,t/fade,(s.length-t)/fade)}out[i]=clamp(v*s.volume,-1,1)}channels.push(out)}return {channels,sampleRate,total}}
 function writeWav(pcm){const {channels,sampleRate,total}=pcm,nch=channels.length,size=44+total*nch*2,out=new ArrayBuffer(size),v=new DataView(out);function textAt(offset,str){for(let i=0;i<str.length;i++)v.setUint8(offset+i,str.charCodeAt(i))}textAt(0,'RIFF');v.setUint32(4,size-8,true);textAt(8,'WAVE');textAt(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,nch,true);v.setUint32(24,sampleRate,true);v.setUint32(28,sampleRate*nch*2,true);v.setUint16(32,nch*2,true);v.setUint16(34,16,true);textAt(36,'data');v.setUint32(40,total*nch*2,true);let o=44;for(let i=0;i<total;i++)for(let ch=0;ch<nch;ch++){const val=clamp(channels[ch][i],-1,1);v.setInt16(o,val<0?val*32768:val*32767,true);o+=2}return new Blob([out],{type:'audio/wav'})}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
