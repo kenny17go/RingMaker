@@ -1,4 +1,4 @@
-# RingMaker V1.0.6
+# RingMaker V1.0.7
 
 A mobile-first, local-only PWA to trim personal audio into a <=29-second custom iPhone ringtone.
 
@@ -38,7 +38,7 @@ No analytics, third-party audio upload, servers or account. Entering a YouTube U
 
 ## Versions
 
-V1.0.6 in homepage, README, manifest, service worker, ZIP filename.
+V1.0.7 in homepage, README, service worker cache and asset URLs.
 
 
 ## V1.0.6
@@ -56,3 +56,7 @@ V1.0.6 in homepage, README, manifest, service worker, ZIP filename.
 - Large countdown from the selected segment duration (29 seconds for the default).
 - Time-based progress bar starts with actual MediaRecorder recording; it shows a separate encoding state after audio playback finishes.
 - Completion displays the existing Save to iPhone action; failures reset the progress panel.
+
+## V1.0.7
+- Add optional, clearly labeled third-party link at the bottom of the page: https://yt5s.biz/zh-twwr200/.
+- Link opens in a new tab with noopener/noreferrer. No embedded content, tracking integration, or automatic extraction.
