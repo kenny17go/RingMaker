@@ -1,4 +1,4 @@
-# RingMaker V1.0.0
+# RingMaker V1.0.1
 
 A mobile-first, local-only PWA to trim personal audio into a <=29-second custom iPhone ringtone.
 
@@ -38,4 +38,4 @@ No analytics, third-party audio upload, servers or account. Entering a YouTube U
 
 ## Versions
 
-V1.0.0 in homepage, README, manifest, service worker, ZIP filename.
+V1.0.1 in homepage, README, manifest, service worker, ZIP filename.
