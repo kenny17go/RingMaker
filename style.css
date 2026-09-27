@@ -25,3 +25,16 @@
 .preview-playhead{z-index:5;background:#ffd067;width:3px;box-shadow:0 0 0 1px #593e12,0 0 8px #ffd067}
 .preview-playhead:before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:10px;height:10px;background:#ffd067;border-radius:0 0 5px 5px}
 #previewSeek{background:linear-gradient(90deg,#83b5ff 0%,#83b5ff var(--played,0%),#66768e var(--played,0%),#66768e 100%);border-radius:20px}
+
+/* V1.0.6 large on-screen export countdown */
+.render-progress{margin:17px 0;padding:24px 18px 20px;background:linear-gradient(165deg,#20395e,#14263e);border:1px solid #628fe0;border-radius:21px;text-align:center;box-shadow:0 12px 35px #030c1938}
+.render-progress[hidden]{display:none}
+.render-progress-label{color:#c6ddff;font-size:17px;font-weight:750;letter-spacing:.02em}
+.render-counter{display:flex;align-items:baseline;justify-content:center;gap:7px;margin:6px 0 0;font-variant-numeric:tabular-nums}
+#renderSeconds{font-size:clamp(84px,24vw,128px);line-height:1.08;font-weight:850;letter-spacing:-.07em;color:#fff;text-shadow:0 0 26px #73a5ff78}
+.render-counter-unit{font-size:22px;color:#cee2ff;font-weight:700}
+.render-remaining{font-size:13px;color:#b9cae3;margin-bottom:18px}
+.render-track{height:11px;border-radius:20px;background:#566883;overflow:hidden}
+.render-bar{height:100%;width:0;background:linear-gradient(90deg,#79a9ff,#82efd1);border-radius:20px;transition:width .18s linear}
+.render-status{font-size:14px;font-weight:700;color:#d9e6fc;margin:15px 0 4px}
+.render-warning{font-size:12px;color:#b9cae3;margin:4px 0 0}
