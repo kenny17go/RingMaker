@@ -38,3 +38,6 @@
 .render-bar{height:100%;width:0;background:linear-gradient(90deg,#79a9ff,#82efd1);border-radius:20px;transition:width .18s linear}
 .render-status{font-size:14px;font-weight:700;color:#d9e6fc;margin:15px 0 4px}
 .render-warning{font-size:12px;color:#b9cae3;margin:4px 0 0}
+
+/* V1.0.7 footer external resource */
+.external-resource{margin:0 auto 17px;padding:13px 15px;max-width:540px;border:1px solid #384b68;border-radius:13px;background:#1b293e;color:#c8d8f0;font-size:13px}.external-resource a{color:#9fc3ff;font-weight:700;text-decoration:underline;text-underline-offset:3px}.external-resource small{display:block;margin-top:7px;font-size:11px;color:#a7b7ce;line-height:1.5}
